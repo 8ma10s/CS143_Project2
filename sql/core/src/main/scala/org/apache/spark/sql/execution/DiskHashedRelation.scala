@@ -165,7 +165,14 @@ private[sql] class DiskPartition (
     * also be closed.
     */
   def closeInput() = {
-    /* IMPLEMENT THIS METHOD */
+    // put remaining data in memory as a chunk
+    spillPartitionToDisk()
+    data.clear()
+
+    // close outputStream (no more writing)
+    outStream.close()
+
+    // indicate that input is closed
     inputClosed = true
   }
 
