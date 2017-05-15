@@ -79,7 +79,20 @@ private[sql] class DiskPartition (
     * @param row the [[Row]] we are adding
     */
   def insert(row: Row) = {
-    /* IMPLEMENT THIS METHOD */
+
+    // if the partition will become bigger than block size when row is inserted
+    if((row.size + measurePartitionSize()) > blockSize){
+      // spill current chunk to disk
+      spillPartitionToDisk()
+      // empty out data (since this chunk is written to disk already)
+      data.clear()
+    }
+
+    // in any case, write the new row being inserted to part of the partition in memory
+    data.add(row)
+
+
+
   }
 
   /**
