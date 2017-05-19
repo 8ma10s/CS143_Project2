@@ -135,13 +135,30 @@ private[sql] class DiskPartition (
       var byteArray: Array[Byte] = null
 
       override def next() = {
-        /* IMPLEMENT THIS METHOD */
-        null
+        // if no more data in current block
+        if(!currentIterator.hasNext){
+          // if there are still unread block left in disk, fetch
+          if(chunkSizeIterator.hasNext){
+            fetchNextChunk()
+          }
+          // if not, no more data
+          else{
+            throw new NoSuchElementException("no more data")
+          }
+        }
+
+        // in any case, read from next element of current block
+        currentIterator.next()
+
       }
 
       override def hasNext() = {
-        /* IMPLEMENT THIS METHOD */
-        false
+        if(!currentIterator.hasNext && !chunkSizeIterator.hasNext){
+          false
+        }
+        else{
+          true
+        }
       }
 
       /**
@@ -151,8 +168,17 @@ private[sql] class DiskPartition (
         * @return true unless the iterator is empty.
         */
       private[this] def fetchNextChunk(): Boolean = {
-        /* IMPLEMENT THIS METHOD */
-        false
+        // if there is next chunk, fetch bytes, convert into list, and set this object to current iterator
+        if(chunkSizeIterator.hasNext){
+          byteArray = CS143Utils.getNextChunkBytes(inStream,chunkSizeIterator.next(),byteArray)
+          currentIterator = CS143Utils.getListFromBytes(byteArray).iterator().asScala
+          true
+        }
+        // if doesn't exist, return false
+        else{
+          false
+        }
+
       }
     }
   }
