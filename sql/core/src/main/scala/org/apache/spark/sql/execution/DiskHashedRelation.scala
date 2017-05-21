@@ -80,6 +80,11 @@ private[sql] class DiskPartition (
     */
   def insert(row: Row) = {
 
+    // if input is already closed, throw exception
+    if(inputClosed){
+      throw new SparkException("Should not insert into already closed input.")
+    }
+
     // if the partition will become bigger than block size when row is inserted
     if((row.size + measurePartitionSize()) > blockSize){
       // spill current chunk to disk
