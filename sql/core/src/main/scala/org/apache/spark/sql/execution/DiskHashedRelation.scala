@@ -52,12 +52,14 @@ protected [sql] final class GeneralDiskHashedRelation(partitions: Array[DiskPart
   extends DiskHashedRelation with Serializable {
 
   override def getIterator() = {
-    /* IMPLEMENT THIS METHOD */
-    null
+    partitions.iterator
   }
 
   override def closeAllPartitions() = {
-    /* IMPLEMENT THIS METHOD */
+    for(i <- 0 to partitions.length - 1){
+      partitions(i).closeInput()
+      partitions(i) closePartition()
+    }
   }
 }
 
@@ -196,15 +198,19 @@ private[sql] class DiskPartition (
     * also be closed.
     */
   def closeInput() = {
-    // put remaining data in memory as a chunk
-    spillPartitionToDisk()
-    data.clear()
+    if(!inputClosed) {
+      // put remaining data in memory as a chunk
+      if (data.size() != 0) {
+        spillPartitionToDisk()
+        data.clear()
+      }
 
-    // close outputStream (no more writing)
-    outStream.close()
+      // close outputStream (no more writing)
+      outStream.close()
 
-    // indicate that input is closed
-    inputClosed = true
+      // indicate that input is closed
+      inputClosed = true
+    }
   }
 
 
@@ -240,7 +246,27 @@ private[sql] object DiskHashedRelation {
               keyGenerator: Projection,
               size: Int = 64,
               blockSize: Int = 64000) = {
-    /* IMPLEMENT THIS METHOD */
-    null
+
+    // declare array of diskPartition s
+    val dpArr = new Array[DiskPartition](size)
+
+    // initialize each element with filename(dp1, dp2, dp3....) and block size
+    for(i <- 0 to size - 1){
+      dpArr(i) = new DiskPartition("dp" + i, blockSize)
+    }
+
+    // insert
+    while(input.hasNext){
+      var row = input.next()
+      dpArr(row.hashCode()%size).insert(row)
+    }
+
+    // close all inputs
+    for(i <-0 to size - 1){
+      dpArr(i).closeInput()
+    }
+
+    // return diskHashedRelation
+    new GeneralDiskHashedRelation(dpArr)
   }
 }
