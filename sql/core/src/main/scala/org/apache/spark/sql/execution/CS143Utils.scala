@@ -129,6 +129,13 @@ object CS143Utils {
     */
   def getUdfFromExpressions(expressions: Seq[Expression]): ScalaUdf = {
     /* IMPLEMENT THIS METHOD */
+    // check from back to front for ScalaUdf expressions
+    for (i <- expressions.size - 1 to 0 by -1) {
+      if (expressions(i).isInstanceOf[ScalaUdf]) {
+        expressions(i).asInstanceOf[ScalaUdf]
+      }
+    }
+    // no UDF found, return null
     null
   }
 
