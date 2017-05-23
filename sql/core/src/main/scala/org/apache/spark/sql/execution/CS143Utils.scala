@@ -129,14 +129,19 @@ object CS143Utils {
     */
   def getUdfFromExpressions(expressions: Seq[Expression]): ScalaUdf = {
     /* IMPLEMENT THIS METHOD */
+    var udf: ScalaUdf = null
+
     // check from back to front for ScalaUdf expressions
-    for (i <- expressions.size - 1 to 0 by -1) {
+    var i = expressions.size - 1
+    while (i >= 0 && udf == null) {
       if (expressions(i).isInstanceOf[ScalaUdf]) {
-        expressions(i).asInstanceOf[ScalaUdf]
+        udf = expressions(i).asInstanceOf[ScalaUdf]
       }
+
+      i -= 1
     }
-    // no UDF found, return null
-    null
+
+    udf
   }
 
   /**
@@ -215,13 +220,19 @@ object CachingIteratorGenerator {
     * @param inputSchema the schema of the rows -- useful for creating projections
     * @return
     */
+
+  /*
+    Translation:
+    -apply returns a function that accepts an iterator (input) of the row, and returns an iterator of the projected row
+    -use the cache to avoid projecting the udf for the same key multiple times
+  */
   def apply(
              cacheKeys: Seq[Expression],
              udf: ScalaUdf,
              preUdfExpressions: Seq[Expression],
              postUdfExpressions: Seq[Expression],
              inputSchema: Seq[Attribute]): (Iterator[Row] => Iterator[Row]) = input => {
-
+    // input is an iterator
     new Iterator[Row] {
       val udfProject = CS143Utils.getNewProjection(Seq(udf), inputSchema)
       val cacheKeyProjection = CS143Utils.getNewProjection(udf.children, inputSchema)
@@ -231,12 +242,41 @@ object CachingIteratorGenerator {
 
       def hasNext() = {
         /* IMPLEMENT THIS METHOD */
-        false
+        input.hasNext
       }
 
       def next() = {
         /* IMPLEMENT THIS METHOD */
-        null
+        if (input.hasNext) {
+          var currentRow: Row = input.next()
+          // note: project.apply() accepts input row as input
+          // calling apply() on object is implicit if not specified in Scala
+          var cacheKey: Row = cacheKeyProjection(currentRow)
+          var projectedPreUdfFields: Row = preUdfProjection(currentRow)
+          var projectedPostUdfFields: Row = postUdfProjection(currentRow)
+
+          var projectedUdfField: Row = null
+
+          // check cache if Udf projection for key has been done before
+          if (cache.containsKey(cacheKey)) {
+            projectedUdfField = cache.get(cacheKey)
+          }
+          else {
+            // calculate projected Udf because it has not been seen before
+            projectedUdfField = udfProject(currentRow)
+            // save result in cache
+            cache.put(cacheKey, projectedUdfField)
+          }
+
+          // return row of recombined row fields
+          // Row extends Seq, so we can use Seq's ++ operator to combine rows
+          // fromSeq: "This method can be used to construct a [[Row]] from a [[Seq]] of values."
+          Row.fromSeq(projectedPreUdfFields ++ projectedUdfField ++ projectedPostUdfFields)
+        }
+        else {
+          // no next input
+          null
+        }
       }
     }
   }
