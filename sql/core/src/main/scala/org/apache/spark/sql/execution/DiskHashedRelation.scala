@@ -257,8 +257,9 @@ private[sql] object DiskHashedRelation {
 
     // insert
     while(input.hasNext){
-      var row = input.next()
-      dpArr(row.hashCode()%size).insert(row)
+      val row = input.next()
+      val inputKey = keyGenerator(row).hashCode() % size
+      dpArr(inputKey).insert(row)
     }
 
     // close all inputs
