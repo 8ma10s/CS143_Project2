@@ -100,15 +100,37 @@ case class PartitionProject(projectList: Seq[Expression], child: SparkPlan) exte
 
     /* IMPLEMENT THIS METHOD */
 
+    // Generate DiskHashedRelation
+    val hashedRelation:DiskHashedRelation = DiskHashedRelation(input, keyGenerator)
+    // Disk Partition Iterator
+    val partitionIt:Iterator[DiskPartition] = hashedRelation.getIterator()
+    // Caching Iterator Generating Function
+    val processAndCache:(Iterator[Row] => Iterator[Row]) = CS143Utils.generateCachingIterator(projectList,child.output)
+    // Current Caching Iterator
+    var curIt:Iterator[Row] = null
+
     new Iterator[Row] {
       def hasNext() = {
         /* IMPLEMENT THIS METHOD */
-        false
+        // There is nothing left in the current iterator and no partitions left, no next element
+        if((curIt == null || !curIt.hasNext) && !partitionIt.hasNext){
+          false
+        }
+        else {
+          true
+        }
       }
 
       def next() = {
         /* IMPLEMENT THIS METHOD */
-        null
+
+        // If no next element in current caching iterator, and if fetching next partition fails (no more partition)
+        if((curIt == null || !curIt.hasNext) && !fetchNextPartition()){
+          throw new NoSuchElementException("No more data")
+        }
+        else{
+          curIt.next()
+        }
       }
 
       /**
@@ -119,7 +141,14 @@ case class PartitionProject(projectList: Seq[Expression], child: SparkPlan) exte
         */
       private def fetchNextPartition(): Boolean  = {
         /* IMPLEMENT THIS METHOD */
-        false
+        if(!partitionIt.hasNext){
+          false
+        }
+        else{
+
+          curIt = processAndCache(partitionIt.next().getData())
+          true
+        }
       }
     }
   }
