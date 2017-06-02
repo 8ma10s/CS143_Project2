@@ -122,14 +122,15 @@ case class SpillableAggregate(
     * @return the result of applying the projection
     */
   def generateIterator(input: Iterator[Row], memorySize: Long = 64 * 1024 * 1024, numPartitions: Int = 64): Iterator[Row] = {
+    println("generateIterator TEST1")
     val groupingProjection = CS143Utils.getNewProjection(groupingExpressions, child.output)
     var currentAggregationTable = new SizeTrackingAppendOnlyMap[Row, AggregateFunction]
     var data = input
 
     def initSpills(): DiskHashedRelation  = {
       /* IMPLEMENT THIS METHOD */
+      // what to use for key?
       //val sp = DiskHashedRelation(data, keyGenerator, numPartitions, 0)
-      //sp
 
       null
     }
@@ -156,14 +157,18 @@ case class SpillableAggregate(
         */
       private def aggregate(): Iterator[Row] = {
         /* IMPLEMENT THIS METHOD */
+        println("aggregate data: ")
         while (data.hasNext) {
           val currentData = data.next()
+          println(currentData)
           currentAggregationTable.update(currentData, newAggregatorInstance() /* not sure what should be here */)
 
         }
-        val generator = AggregateIteratorGenerator(resultExpression, output /* not sure what should be here */)
-        val it = generator(currentAggregationTable.iterator)
-        it
+        println("generateIterator TEST2")
+        // TODO: convert AttributeReference to Attribute?
+        val generator = AggregateIteratorGenerator(resultExpression, aggregatorSchema)
+        println("generateIterator TEST3")
+        generator(currentAggregationTable.iterator)
       }
 
       /**
