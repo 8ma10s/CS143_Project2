@@ -40,7 +40,7 @@ case class SpillableAggregate(
 
   private[this] val childOutput = child.output
 
-  override def output = aggregateExpressions.map(_.toAttribute)
+  override def output: Seq[Attribute] = aggregateExpressions.map(_.toAttribute)
 
   /**
     * An aggregate that needs to be computed for each row in a group.
@@ -68,7 +68,7 @@ case class SpillableAggregate(
             AttributeReference(s"aggResult:$a", a.dataType, a.nullable)())
       }
     }.head
-  
+
     /*
     var agg = aggregateExpressions.head
   private[this] val aggregator: ComputedAggregate = ComputedAggregate(
@@ -128,6 +128,9 @@ case class SpillableAggregate(
 
     def initSpills(): DiskHashedRelation  = {
       /* IMPLEMENT THIS METHOD */
+      //val sp = DiskHashedRelation(data, keyGenerator, numPartitions, 0)
+      //sp
+
       null
     }
 
@@ -138,12 +141,12 @@ case class SpillableAggregate(
 
       def hasNext() = {
         /* IMPLEMENT THIS METHOD */
-        false
+        aggregateResult.hasNext
       }
 
       def next() = {
         /* IMPLEMENT THIS METHOD */
-        null
+        aggregateResult.next()
       }
 
       /**
@@ -153,7 +156,14 @@ case class SpillableAggregate(
         */
       private def aggregate(): Iterator[Row] = {
         /* IMPLEMENT THIS METHOD */
-        null
+        while (data.hasNext) {
+          val currentData = data.next()
+          currentAggregationTable.update(currentData, newAggregatorInstance() /* not sure what should be here */)
+
+        }
+        val generator = AggregateIteratorGenerator(resultExpression, output /* not sure what should be here */)
+        val it = generator(currentAggregationTable.iterator)
+        it
       }
 
       /**
