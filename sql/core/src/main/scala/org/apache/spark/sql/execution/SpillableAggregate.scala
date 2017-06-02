@@ -38,6 +38,8 @@ case class SpillableAggregate(
       }
     }
 
+  private[this] val childOutput = child.output
+
   override def output = aggregateExpressions.map(_.toAttribute)
 
   /**
@@ -56,12 +58,25 @@ case class SpillableAggregate(
   /** Physical aggregator generated from a logical expression.  */
     // IMPLEMENT ME
     // just get the first aggregateExpression?
+    // hack to just use the old code to get the first aggregator
+    private[this] val aggregator: ComputedAggregate = aggregateExpressions.flatMap { agg =>
+      agg.collect {
+        case a: AggregateExpression =>
+          ComputedAggregate(
+            a,
+            BindReferences.bindReference(a, childOutput),
+            AttributeReference(s"aggResult:$a", a.dataType, a.nullable)())
+      }
+    }.head
+  
+    /*
     var agg = aggregateExpressions.head
   private[this] val aggregator: ComputedAggregate = ComputedAggregate(
     agg,
     BindReferences.bindReference(agg, child.output),
     AttributeReference(s"aggResult:$agg", agg.dataType, agg.nullable)()
   )
+  */
 
   /** Schema of the aggregate.  */
   // IMPLEMENT ME
