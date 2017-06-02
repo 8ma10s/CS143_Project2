@@ -311,10 +311,12 @@ object AggregateIteratorGenerator {
         var currentRow: Row = currentInput._1
         var currentAggFunc: AggregateFunction = currentInput._2
 
+        val aggValue = currentAggFunc.eval(currentRow)
+
         var projectedPostAggregate = postAggregateProjection(currentRow)
 
-        //Row.fromSeq(projectedPostAggregate)
-        projectedPostAggregate
+        // +: prepends value to Seq
+        Row.fromSeq(aggValue +: projectedPostAggregate)
       }
     }
   }
