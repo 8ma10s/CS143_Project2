@@ -295,16 +295,25 @@ object AggregateIteratorGenerator {
             inputSchema: Seq[Attribute]): (Iterator[(Row, AggregateFunction)] => Iterator[Row]) = input => {
 
     new Iterator[Row] {
-      val postAggregateProjection = CS143Utils.getNewProjection(resultExpressions, inputSchema)
+      val postAggregateProjection = CS143Utils.getNewProjection(resultExpressions, inputSchema) // same as resultProjection (line 172) of Aggregate.scala
 
       def hasNext() = {
-        /* IMPLEMENT THIS METHOD */
-        false
+        input.hasNext // iterate through each element
       }
 
+      // basically same thing as 179-191 of Aggregate.scala. Iterate through each group-Aggregate pair, compute aggregate, then make a row out of group name and aggregate result value
       def next() = {
         /* IMPLEMENT THIS METHOD */
-        null
+        val currentEntry: (Row, AggregateFunction) = input.next()
+        val currentGroup: Row = currentEntry._1
+        val currentInstance: AggregateFunction = currentEntry._2
+
+        val aggregateResult = new GenericMutableRow(1)
+        aggregateResult(0) = currentInstance.eval(EmptyRow)
+
+        val joinedRow = new JoinedRow4
+        postAggregateProjection(joinedRow(aggregateResult, currentGroup))
+
       }
     }
   }
