@@ -134,6 +134,8 @@ case class SpillableAggregate(
     var currentAggregationTable = new SizeTrackingAppendOnlyMap[Row, AggregateFunction] // val hashTable in Aggregate.scala
     var data = input
 
+
+
     def initSpills(): DiskHashedRelation  = {
       /* IMPLEMENT THIS METHOD */
       null
@@ -169,13 +171,22 @@ case class SpillableAggregate(
         // newAggregatorInstance is the buffer for this single aggregate expression
         // update method is used instead of put method (because again, it does the same thing)
         var currentRow: Row = null
+        var diskHashedRelation: DiskHashedRelation = null
         while (input.hasNext) {
           currentRow = input.next()
           val currentGroup = groupingProjection(currentRow)
           var currentBuffer = currentAggregationTable(currentGroup)
           if (currentBuffer == null) {
             currentBuffer = newAggregatorInstance()
-            currentAggregationTable.update(currentGroup.copy(), currentBuffer)
+            if (CS143Utils.maybeSpill(currentAggregationTable, memorySize)) {
+              if (diskHashedRelation == null) {
+                diskHashedRelation = initSpills()
+              }
+              spillRecord(currentRow)
+            }
+            else {
+              currentAggregationTable.update(currentGroup.copy(), currentBuffer)
+            }
           }
 
           currentBuffer.update(currentRow)

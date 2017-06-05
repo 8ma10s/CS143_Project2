@@ -188,14 +188,22 @@ object CS143Utils {
   /**
     * This method is called before a new value is added to the aggregation table. The idea is to
     * check if the size of the aggregation table is proper in case the new record will trigger the
-    * expansion of the table.
+    * expansion of the table.s
     * @param collection a map able to track its size
     * @param allowedMemory the maximum amount of memory allowed for the input collection
     * @return true if the addition of a new record will make the table grow beyond the allowed size
     */
   def maybeSpill[K, V](collection: SizeTrackingAppendOnlyMap[K, V], allowedMemory: Long): Boolean = {
     /* IMPLEMENT THIS METHOD */
-    false
+    // println("collectionSize:")
+    // println(collection.estimateSize())
+    // println(collection.size)
+    if(2*collection.estimateSize() > allowedMemory){
+      true
+    }
+    else{
+      false
+    }
   }
 }
 
