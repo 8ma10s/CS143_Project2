@@ -136,9 +136,15 @@ case class SpillableAggregate(
 
 
 
-    def initSpills(): DiskHashedRelation  = {
+    def initSpills(): Array[DiskPartition]  = {
       /* IMPLEMENT THIS METHOD */
-      null
+      val dpArr = new Array[DiskPartition](numPartitions)
+      for(i <- 0 to numPartitions - 1){
+        dpArr(i) = new DiskPartition("spill" + i, 0)
+      }
+
+      dpArr
+
     }
 
     val spills = initSpills()
@@ -172,24 +178,29 @@ case class SpillableAggregate(
         // update method is used instead of put method (because again, it does the same thing)
         var currentRow: Row = null
         var diskHashedRelation: DiskHashedRelation = null
-        while (input.hasNext) {
-          currentRow = input.next()
+        while (data.hasNext) {
+          currentRow = data.next()
           val currentGroup = groupingProjection(currentRow)
           var currentBuffer = currentAggregationTable(currentGroup)
+          // if the group of new row being added does not already exist in the hash table
           if (currentBuffer == null) {
             currentBuffer = newAggregatorInstance()
+            // if has potentil to spill
             if (CS143Utils.maybeSpill(currentAggregationTable, memorySize)) {
-              if (diskHashedRelation == null) {
-                diskHashedRelation = initSpills()
-              }
+              // spill
               spillRecord(currentRow)
             }
+            // no potential to spill, create new entry and add
             else {
               currentAggregationTable.update(currentGroup.copy(), currentBuffer)
+              currentBuffer.update(currentRow)
             }
           }
+            // if record already exists, no spilling. just add the record
+          else{
+            currentBuffer.update(currentRow)
+          }
 
-          currentBuffer.update(currentRow)
         }
 
         val generateAggIt = AggregateIteratorGenerator(resultExpression, Seq(aggregatorSchema) ++ namedGroups.map(_._2)) // look at lines 174 of Aggregate.scala
@@ -203,6 +214,8 @@ case class SpillableAggregate(
         */
       private def spillRecord(row: Row)  = {
         /* IMPLEMENT THIS METHOD */
+        val inputKey = groupingProjection(row).hashCode() % numPartitions
+        spills(inputKey).insert(row)
       }
 
       /**
