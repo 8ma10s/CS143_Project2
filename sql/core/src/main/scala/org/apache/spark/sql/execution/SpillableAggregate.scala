@@ -157,12 +157,20 @@ case class SpillableAggregate(
        */
       def hasNext() = {
         /* IMPLEMENT THIS METHOD */
-        aggregateResult.hasNext
+          aggregateResult.hasNext || fetchSpill()
       }
 
       def next() = {
         /* IMPLEMENT THIS METHOD */
-        aggregateResult.next()
+        if(!aggregateResult.hasNext && !fetchSpill()){
+          throw new NoSuchElementException("no data")
+        }
+        else{
+          if(!aggregateResult.hasNext){
+            fetchSpill()
+          }
+          aggregateResult.next()
+        }
       }
 
       /**
@@ -176,6 +184,7 @@ case class SpillableAggregate(
         // get method is replaced with apply method because class AppendOnlyMap overrides apply method with what get method for normal hashMap does
         // newAggregatorInstance is the buffer for this single aggregate expression
         // update method is used instead of put method (because again, it does the same thing)
+
         var currentRow: Row = null
         var diskHashedRelation: DiskHashedRelation = null
         while (data.hasNext) {
@@ -185,8 +194,8 @@ case class SpillableAggregate(
           // if the group of new row being added does not already exist in the hash table
           if (currentBuffer == null) {
             currentBuffer = newAggregatorInstance()
-            // if has potentil to spill
-            if (CS143Utils.maybeSpill(currentAggregationTable, memorySize)) {
+            // if has potential to spill
+            if (data == input && CS143Utils.maybeSpill(currentAggregationTable, memorySize)) {
               // spill
               spillRecord(currentRow)
             }
@@ -201,6 +210,14 @@ case class SpillableAggregate(
             currentBuffer.update(currentRow)
           }
 
+        }
+
+        if(data == input){
+          for(i <-0 to numPartitions - 1){
+            spills(i).closeInput()
+          }
+          diskHashedRelation = new GeneralDiskHashedRelation(spills)
+          hashedSpills = Some(diskHashedRelation.getIterator())
         }
 
         val generateAggIt = AggregateIteratorGenerator(resultExpression, Seq(aggregatorSchema) ++ namedGroups.map(_._2)) // look at lines 174 of Aggregate.scala
@@ -234,7 +251,34 @@ case class SpillableAggregate(
         */
       private def fetchSpill(): Boolean  = {
         /* IMPLEMENT THIS METHOD */
-        false
+        if(aggregateResult.hasNext){
+          false
+        }
+        else if(hashedSpills.isEmpty){
+          false
+        }
+        else{
+          val dpIt = hashedSpills.get // iterator of hashedSpills
+
+          var hasPartition = false
+          while(dpIt.hasNext && !hasPartition){
+            data = dpIt.next().getData()
+            if(data.hasNext){
+              hasPartition = true
+            }
+          }
+
+          if(!hasPartition){
+            false
+          }
+
+          else{
+            currentAggregationTable = new SizeTrackingAppendOnlyMap[Row, AggregateFunction]
+            aggregateResult = aggregate()
+            true
+          }
+
+        }
       }
     }
   }
