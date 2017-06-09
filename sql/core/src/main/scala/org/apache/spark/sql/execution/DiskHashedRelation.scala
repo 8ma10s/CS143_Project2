@@ -118,11 +118,17 @@ private[sql] class DiskPartition (
   private[this] def spillPartitionToDisk() = {
     val bytes: Array[Byte] = getBytesFromList(data)
 
-    // This array list stores the sizes of chunks written in order to read them back correctly.
-    chunkSizes.add(bytes.size)
+    if(data.size == 0){
+      false
+    }
 
-    Files.write(path, bytes, StandardOpenOption.APPEND)
-    writtenToDisk = true
+    else{
+      // This array list stores the sizes of chunks written in order to read them back correctly.
+      chunkSizes.add(bytes.size)
+
+      Files.write(path, bytes, StandardOpenOption.APPEND)
+      writtenToDisk = true
+    }
   }
 
   /**

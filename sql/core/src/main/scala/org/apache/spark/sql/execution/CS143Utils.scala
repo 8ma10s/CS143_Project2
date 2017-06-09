@@ -188,14 +188,22 @@ object CS143Utils {
   /**
     * This method is called before a new value is added to the aggregation table. The idea is to
     * check if the size of the aggregation table is proper in case the new record will trigger the
-    * expansion of the table.
+    * expansion of the table.s
     * @param collection a map able to track its size
     * @param allowedMemory the maximum amount of memory allowed for the input collection
     * @return true if the addition of a new record will make the table grow beyond the allowed size
     */
   def maybeSpill[K, V](collection: SizeTrackingAppendOnlyMap[K, V], allowedMemory: Long): Boolean = {
     /* IMPLEMENT THIS METHOD */
-    false
+    // println("collectionSize:")
+    // println(collection.estimateSize())
+    // println(collection.size)
+    if(2*collection.estimateSize() > allowedMemory){
+      true
+    }
+    else{
+      false
+    }
   }
 }
 
@@ -295,16 +303,25 @@ object AggregateIteratorGenerator {
             inputSchema: Seq[Attribute]): (Iterator[(Row, AggregateFunction)] => Iterator[Row]) = input => {
 
     new Iterator[Row] {
-      val postAggregateProjection = CS143Utils.getNewProjection(resultExpressions, inputSchema)
+      val postAggregateProjection = CS143Utils.getNewProjection(resultExpressions, inputSchema) // same as resultProjection (line 172) of Aggregate.scala
 
       def hasNext() = {
-        /* IMPLEMENT THIS METHOD */
-        false
+        input.hasNext // iterate through each element
       }
 
+      // basically same thing as 179-191 of Aggregate.scala. Iterate through each group-Aggregate pair, compute aggregate, then make a row out of group name and aggregate result value
       def next() = {
         /* IMPLEMENT THIS METHOD */
-        null
+        val currentEntry: (Row, AggregateFunction) = input.next()
+        val currentGroup: Row = currentEntry._1
+        val currentInstance: AggregateFunction = currentEntry._2
+
+        val aggregateResult = new GenericMutableRow(1)
+        aggregateResult(0) = currentInstance.eval(EmptyRow)
+
+        val joinedRow = new JoinedRow4
+        postAggregateProjection(joinedRow(aggregateResult, currentGroup))
+
       }
     }
   }

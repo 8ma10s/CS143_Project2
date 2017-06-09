@@ -54,13 +54,35 @@ case class SpillableAggregate(
                                 resultAttribute: AttributeReference)
 
   /** Physical aggregator generated from a logical expression.  */
-  private[this] val aggregator: ComputedAggregate = null //IMPLEMENT ME
+  private[this] val aggregator: ComputedAggregate = {
+    /* [Yamato's Note] - Translation
+    Create a new seq[ComputedAggregate]
+    for each namedExpression in the aggregateExpressions:
+      for each expression in the namedExpression: (namedExpression = seq[Expression])
+        Check if the expression is an AggregateExpression. If it is, create ComputeAggregate corresponding to that AggregateExpression.
+        Add this to seq created in the first line.
+
+    Take the first element of seq[ComputedAggregate] */
+    aggregateExpressions.flatMap { agg =>
+      agg.collect {
+        case a: AggregateExpression =>
+          ComputedAggregate(
+            a,
+            BindReferences.bindReference(a, child.output),
+            AttributeReference(s"aggResult:$a", a.dataType, a.nullable)())
+      }
+    }.head
+  } // IMPLEMENTED
 
   /** Schema of the aggregate.  */
-  private[this] val aggregatorSchema: AttributeReference = null //IMPLEMENT ME
+    /* [Yamato's Note]Consider the fact that val aggregator is simply ONE of the elements of computedAggregates in Aggregate.scala.
+    This is equivalent to val computeSchema of Aggregate.Scala.
+     */
+  private[this] val aggregatorSchema: AttributeReference = aggregator.resultAttribute // IMPLEMENTED
 
   /** Creates a new aggregator instance.  */
-  private[this] def newAggregatorInstance(): AggregateFunction = null //IMPLEMENT ME
+  /* [Yamato's Note]same logic. Equivalent of newAggregateBuffer */
+  private[this] def newAggregatorInstance(): AggregateFunction = aggregator.aggregate.newInstance() // IMPLEMENTED
 
   /** Named attributes used to substitute grouping attributes in the final result. */
   private[this] val namedGroups = groupingExpressions.map {
@@ -97,14 +119,32 @@ case class SpillableAggregate(
     * @param memorySize the memory size limit for this aggregate
     * @return the result of applying the projection
     */
+  /* [Yamato's Note] when looking at this generateIterator Method, look in the order of:
+  1. The first three value declarations
+  2. aggregate() Method
+  3. CS143Utils.AggregateIteratorGenerator object
+  4. Iterator[Row] part of generateIterator
+
+  This order roughly corresponds to that of Aggregate.scala, lines 148-191.
+  */
   def generateIterator(input: Iterator[Row], memorySize: Long = 64 * 1024 * 1024, numPartitions: Int = 64): Iterator[Row] = {
-    val groupingProjection = CS143Utils.getNewProjection(groupingExpressions, child.output)
-    var currentAggregationTable = new SizeTrackingAppendOnlyMap[Row, AggregateFunction]
+    /* [Yamato's Note]these things do exactly the same thing as line 149~150 of Aggregate.scala. SizeTrackingAppendOnlyMap also tracks size of the map (used later in part 6 or 7, probably)
+    */
+    val groupingProjection = CS143Utils.getNewProjection(groupingExpressions, child.output) // val groupingProjection in Aggregate.scala
+    var currentAggregationTable = new SizeTrackingAppendOnlyMap[Row, AggregateFunction] // val hashTable in Aggregate.scala
     var data = input
 
-    def initSpills(): DiskHashedRelation  = {
+
+
+    def initSpills(): Array[DiskPartition]  = {
       /* IMPLEMENT THIS METHOD */
-      null
+      val dpArr = new Array[DiskPartition](numPartitions)
+      for(i <- 0 to numPartitions - 1){
+        dpArr(i) = new DiskPartition("spill" + i, 0)
+      }
+
+      dpArr
+
     }
 
     val spills = initSpills()
@@ -112,14 +152,26 @@ case class SpillableAggregate(
     new Iterator[Row] {
       var aggregateResult: Iterator[Row] = aggregate()
 
+      /* [Yamato's Note] In the SpillableAggregate.scala, AggregateIteratorGenerator does all the hard work (which corresponds to lines 169-191 in Aggregate.scala).
+      Therefore, the hasNext() and next() simply iterates over iterators produced by Generator.
+       */
       def hasNext() = {
         /* IMPLEMENT THIS METHOD */
-        false
+        // if data in result, or if there is an nonempty partition in the disk
+        (aggregateResult.hasNext || fetchSpill())
       }
 
       def next() = {
         /* IMPLEMENT THIS METHOD */
-        null
+        if(!aggregateResult.hasNext && !fetchSpill()){
+          throw new NoSuchElementException("no data")
+        }
+        else{
+          if(!aggregateResult.hasNext){
+            fetchSpill()
+          }
+          aggregateResult.next()
+        }
       }
 
       /**
@@ -129,7 +181,48 @@ case class SpillableAggregate(
         */
       private def aggregate(): Iterator[Row] = {
         /* IMPLEMENT THIS METHOD */
-        null
+        // [Yamato's Note] this basically does the same thing as 153~160 of Aggregate.scala.
+        // get method is replaced with apply method because class AppendOnlyMap overrides apply method with what get method for normal hashMap does
+        // newAggregatorInstance is the buffer for this single aggregate expression
+        // update method is used instead of put method (because again, it does the same thing)
+
+        var currentRow: Row = null
+        var diskHashedRelation: DiskHashedRelation = null
+        while (data.hasNext) {
+          currentRow = data.next()
+          val currentGroup = groupingProjection(currentRow)
+          var currentBuffer = currentAggregationTable(currentGroup)
+          // if the group of new row being added does not already exist in the hash table
+          if (currentBuffer == null) {
+            currentBuffer = newAggregatorInstance()
+            // if has potential to spill
+            if (data == input && CS143Utils.maybeSpill(currentAggregationTable, memorySize)) {
+              // spill
+              spillRecord(currentRow)
+            }
+            // no potential to spill, create new entry and add
+            else {
+              currentAggregationTable.update(currentGroup.copy(), currentBuffer)
+              currentBuffer.update(currentRow)
+            }
+          }
+            // if record already exists, no spilling. just add the record
+          else{
+            currentBuffer.update(currentRow)
+          }
+
+        }
+
+        // yes, I do mean referential equality here. If this is the first time aggregate() is called , we must close the input of all partitions
+        if(data == input){
+          for(i <-0 to numPartitions - 1){
+            spills(i).closeInput()
+          }
+          diskHashedRelation = new GeneralDiskHashedRelation(spills)
+        }
+
+        val generateAggIt = AggregateIteratorGenerator(resultExpression, Seq(aggregatorSchema) ++ namedGroups.map(_._2)) // look at lines 174 of Aggregate.scala
+        generateAggIt(currentAggregationTable.iterator) // pass in key-value pair of current hashMap to make it do the work over each group - aggregate pair. Returns Iterator[Row] of processed rows
       }
 
       /**
@@ -139,6 +232,10 @@ case class SpillableAggregate(
         */
       private def spillRecord(row: Row)  = {
         /* IMPLEMENT THIS METHOD */
+        // determine the group this row is in, get the hash code, then put it in a partition.
+        // this guarantees that all rows in the same group will be put into one partition
+        val inputKey = groupingProjection(row).hashCode() % numPartitions
+        spills(inputKey).insert(row)
       }
 
       /**
@@ -157,7 +254,39 @@ case class SpillableAggregate(
         */
       private def fetchSpill(): Boolean  = {
         /* IMPLEMENT THIS METHOD */
-        false
+        // prevents the fetching if aggregateResult still has data to iterate
+        if(aggregateResult.hasNext){
+          false
+        }
+
+        else{
+          // if it's the first time fetchSpill is called, hashedSpills should be set (to the iterator)
+          if(hashedSpills.isEmpty){
+            hashedSpills = Some(spills.iterator)
+          }
+          val dpIt = hashedSpills.get // iterator of hashedSpills
+
+          // find an nonempty partition. If no more partition with data in it, return false
+          var hasPartition = false
+          while(dpIt.hasNext && !hasPartition){
+            data = dpIt.next().getData()
+            if(data.hasNext){
+              hasPartition = true
+            }
+          }
+
+          if(!hasPartition){
+            false
+          }
+
+          // if any nonempty partition is found, create new HashTable, put the data from that partition in the table, then return true
+          else{
+            currentAggregationTable = new SizeTrackingAppendOnlyMap[Row, AggregateFunction]
+            aggregateResult = aggregate()
+            true
+          }
+
+        }
       }
     }
   }
