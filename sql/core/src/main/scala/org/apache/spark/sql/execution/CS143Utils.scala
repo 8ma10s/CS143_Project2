@@ -295,13 +295,8 @@ object AggregateIteratorGenerator {
             inputSchema: Seq[Attribute]): (Iterator[(Row, AggregateFunction)] => Iterator[Row]) = input => {
 
     new Iterator[Row] {
-      println("resultExpressions:")
-      println(resultExpressions)
-      println("inputSchema:")
-      println(inputSchema)
-      // TODO: this line is throwing exception
       val postAggregateProjection = CS143Utils.getNewProjection(resultExpressions, inputSchema)
-      println("AggregateIteratorGenerator TEST2")
+
       def hasNext() = {
         /* IMPLEMENT THIS METHOD */
         input.hasNext
@@ -316,19 +311,12 @@ object AggregateIteratorGenerator {
         var currentRow: Row = currentInput._1
         var currentAggFunc: AggregateFunction = currentInput._2
 
-        println("AggregateIteratorGenerator TEST3")
-        val aggregateResult = currentAggFunc.eval(currentRow)
-        println("AggregateIteratorGenerator TEST4")
+        val aggValue = currentAggFunc.eval(currentRow)
 
         var projectedPostAggregate = postAggregateProjection(currentRow)
-        println("AggregateIteratorGenerator TEST5")
-
-        // for testing
-        val combinedSeq = aggregateResult +: projectedPostAggregate
-        println(combinedSeq mkString "\n")
 
         // +: prepends value to Seq
-        Row.fromSeq(aggregateResult +: projectedPostAggregate)
+        Row.fromSeq(aggValue +: projectedPostAggregate)
       }
     }
   }
