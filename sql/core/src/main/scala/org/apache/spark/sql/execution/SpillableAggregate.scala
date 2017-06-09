@@ -157,7 +157,8 @@ case class SpillableAggregate(
        */
       def hasNext() = {
         /* IMPLEMENT THIS METHOD */
-          aggregateResult.hasNext || fetchSpill()
+        // if data in result, or if there is an nonempty partition in the disk
+        (aggregateResult.hasNext || fetchSpill())
       }
 
       def next() = {
@@ -212,12 +213,12 @@ case class SpillableAggregate(
 
         }
 
+        // yes, I do mean referential equality here. If this is the first time aggregate() is called , we must close the input of all partitions
         if(data == input){
           for(i <-0 to numPartitions - 1){
             spills(i).closeInput()
           }
           diskHashedRelation = new GeneralDiskHashedRelation(spills)
-          hashedSpills = Some(diskHashedRelation.getIterator())
         }
 
         val generateAggIt = AggregateIteratorGenerator(resultExpression, Seq(aggregatorSchema) ++ namedGroups.map(_._2)) // look at lines 174 of Aggregate.scala
@@ -231,6 +232,8 @@ case class SpillableAggregate(
         */
       private def spillRecord(row: Row)  = {
         /* IMPLEMENT THIS METHOD */
+        // determine the group this row is in, get the hash code, then put it in a partition.
+        // this guarantees that all rows in the same group will be put into one partition
         val inputKey = groupingProjection(row).hashCode() % numPartitions
         spills(inputKey).insert(row)
       }
@@ -251,15 +254,19 @@ case class SpillableAggregate(
         */
       private def fetchSpill(): Boolean  = {
         /* IMPLEMENT THIS METHOD */
+        // prevents the fetching if aggregateResult still has data to iterate
         if(aggregateResult.hasNext){
           false
         }
-        else if(hashedSpills.isEmpty){
-          false
-        }
+
         else{
+          // if it's the first time fetchSpill is called, hashedSpills should be set (to the iterator)
+          if(hashedSpills.isEmpty){
+            hashedSpills = Some(spills.iterator)
+          }
           val dpIt = hashedSpills.get // iterator of hashedSpills
 
+          // find an nonempty partition. If no more partition with data in it, return false
           var hasPartition = false
           while(dpIt.hasNext && !hasPartition){
             data = dpIt.next().getData()
@@ -272,6 +279,7 @@ case class SpillableAggregate(
             false
           }
 
+          // if any nonempty partition is found, create new HashTable, put the data from that partition in the table, then return true
           else{
             currentAggregationTable = new SizeTrackingAppendOnlyMap[Row, AggregateFunction]
             aggregateResult = aggregate()
