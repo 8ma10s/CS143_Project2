@@ -299,22 +299,12 @@ object AggregateIteratorGenerator {
 
       def hasNext() = {
         /* IMPLEMENT THIS METHOD */
-        input.hasNext
+        false
       }
 
       def next() = {
         /* IMPLEMENT THIS METHOD */
-        // TODO: this is probably wrong
-        // TODO: concatonate aggregate + related group data
-
-        var currentInput: (Row, AggregateFunction) = input.next()
-        var currentRow: Row = currentInput._1
-        var currentAggFunc: AggregateFunction = currentInput._2
-
-        var projectedPostAggregate = postAggregateProjection(currentRow)
-
-        //Row.fromSeq(projectedPostAggregate)
-        projectedPostAggregate
+        null
       }
     }
   }
